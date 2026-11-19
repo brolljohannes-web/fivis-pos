@@ -97,7 +97,6 @@ export const sweetTh = (id) => (SWEET.find((s) => s.id === id) || {}).th || "";
 export function modsText(l) {
   const p = [];
   if (l.milk && l.milk !== "regular") p.push(milkTh(l.milk));
-  if (l.sweet && l.sweet !== "100") p.push(sweetTh(l.sweet));
   if (l.shot) p.push("เพิ่มช็อต");
   if (l.note) p.push(`“${l.note}”`);
   return p.join(" · ");

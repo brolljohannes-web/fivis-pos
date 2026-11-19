@@ -23,8 +23,10 @@ create table if not exists pos_orders (
   total integer not null,
   received integer not null default 0,
   change_given integer not null default 0,
+  method text not null default 'cash',   -- cash | qr
   status text not null default 'paid'  -- paid | void
 );
+alter table pos_orders add column if not exists method text not null default 'cash';
 create index if not exists pos_orders_day_idx on pos_orders (day);
 
 create table if not exists pos_closings (

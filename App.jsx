@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Coffee, Plus, Minus, X, Check, Lock, Wifi, WifiOff, Trash2, Delete, Download,
-  Ban, ClipboardList, BarChart3, Armchair, ShoppingBag, Banknote, Clock,
+  Ban, ClipboardList, BarChart3, Banknote, Clock, QrCode,
 } from "lucide-react";
 import {
-  POS_PIN, EXTRA_SHOT_PRICE, MILK, SWEET, CATEGORIES, DEFAULT_MENU,
+  POS_PIN, EXTRA_SHOT_PRICE, MILK, CATEGORIES, DEFAULT_MENU,
   baht, localDay, addDays, timeHM, uid, milkPrice, modsText,
 } from "./data.js";
 import { ls, fetchMenu, upsertOrders, fetchOrders, upsertClosing, fetchClosings } from "./api.js";
@@ -92,11 +92,9 @@ function PinGate({ onOk }) {
    Artikel-Dialog (Milch / Süße / Extra Shot / hier oder mitnehmen)
    ========================================================================= */
 
-function ItemModal({ item, defaultServe, onClose, onAdd }) {
+function ItemModal({ item, onClose, onAdd }) {
   const [milk, setMilk] = useState("regular");
-  const [sweet, setSweet] = useState("100");
   const [shot, setShot] = useState(false);
-  const [serve, setServe] = useState(defaultServe);
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState("");
 
@@ -126,20 +124,6 @@ function ItemModal({ item, defaultServe, onClose, onAdd }) {
         </section>
       )}
 
-      {item.sweet && (
-        <section>
-          <div className="label">ความหวาน · Sweetness</div>
-          <div className="chips">
-            {SWEET.map((s) => (
-              <button key={s.id} className={"chip" + (sweet === s.id ? " on" : "")} onClick={() => setSweet(s.id)}>
-                <b>{s.th}</b>
-                <small>{s.en}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
       {item.shot && (
         <section>
           <button className={"toggle" + (shot ? " on" : "")} onClick={() => setShot((s) => !s)}>
@@ -149,18 +133,6 @@ function ItemModal({ item, defaultServe, onClose, onAdd }) {
           </button>
         </section>
       )}
-
-      <section>
-        <div className="label">การเสิร์ฟ · Serve</div>
-        <Segmented
-          value={serve}
-          onChange={setServe}
-          options={[
-            { id: "here", label: "ทานที่ร้าน · Here", icon: <Armchair size={18} /> },
-            { id: "takeaway", label: "ห่อกลับ · Take away", icon: <ShoppingBag size={18} /> },
-          ]}
-        />
-      </section>
 
       <section>
         <div className="label">หมายเหตุ · Note</div>
@@ -178,9 +150,7 @@ function ItemModal({ item, defaultServe, onClose, onAdd }) {
           onClick={() =>
             onAdd(item, {
               milk: item.milk ? milk : null,
-              sweet: item.sweet ? sweet : null,
               shot: item.shot ? shot : false,
-              serve,
               note: note.trim(),
               qty,
             })
@@ -194,17 +164,11 @@ function ItemModal({ item, defaultServe, onClose, onAdd }) {
 }
 
 /* =========================================================================
-   Bezahlen (nur Bargeld)
+   Bezahlen (Bargeld / Thai QR)
    ========================================================================= */
 
 function PayModal({ total, onClose, onConfirm }) {
-  const [typed, setTyped] = useState("");
-  const received = typed === "" ? null : Number(typed);
-  const diff = received == null ? null : received - total;
-  const quick = [20, 50, 100, 500, 1000].filter((n) => n >= total && n !== total).slice(0, 3);
-
-  const digit = (d) => setTyped((t) => (t.length >= 6 ? t : t === "0" ? d : t + d));
-
+  const [method, setMethod] = useState(null);
   return (
     <Modal onClose={onClose}>
       <div className="dlg-head">
@@ -215,29 +179,19 @@ function PayModal({ total, onClose, onConfirm }) {
         <button className="icon-btn" onClick={onClose} aria-label="close"><X size={22} /></button>
       </div>
 
-      <div className="label">รับเงิน · Cash received</div>
-      <div className="recv">{received == null ? "—" : baht(received)}</div>
-
-      <div className="quick">
-        <button className="btn" onClick={() => setTyped(String(total))}>พอดี · Exact</button>
-        {quick.map((n) => (
-          <button key={n} className="btn" onClick={() => setTyped(String(n))}>{baht(n)}</button>
-        ))}
+      <div className="label">วิธีชำระเงิน · Payment method</div>
+      <div className="seg-row">
+        <button className={"btn method" + (method === "cash" ? " primary" : "")} onClick={() => setMethod("cash")}>
+          <Banknote size={26} />
+          <span>เงินสด</span><small>Cash</small>
+        </button>
+        <button className={"btn method" + (method === "qr" ? " primary" : "")} onClick={() => setMethod("qr")}>
+          <QrCode size={26} />
+          <span>โอน / Thai QR</span><small>Thai QR Transfer</small>
+        </button>
       </div>
 
-      <Keypad onDigit={digit} onBack={() => setTyped((t) => t.slice(0, -1))} onClear={() => setTyped("")} />
-
-      <div className={"change" + (diff != null && diff < 0 ? " short" : diff != null ? " ok" : "")}>
-        {diff == null && <span>เงินทอน · Change</span>}
-        {diff != null && diff >= 0 && (<><span>เงินทอน · Change</span><b>{baht(diff)}</b></>)}
-        {diff != null && diff < 0 && (<><span>ขาดอีก · Short</span><b>{baht(-diff)}</b></>)}
-      </div>
-
-      <button
-        className="btn primary big"
-        disabled={received == null || received < total}
-        onClick={() => onConfirm(received)}
-      >
+      <button className="btn primary big" disabled={!method} onClick={() => onConfirm(method)}>
         <Check size={22} /> ยืนยัน · Confirm
       </button>
     </Modal>
@@ -251,7 +205,6 @@ function PayModal({ total, onClose, onConfirm }) {
 function SellView({ menu, nextNo, onCommit }) {
   const [cat, setCat] = useState("hot");
   const [cart, setCart] = useState([]);
-  const [serve, setServe] = useState("here");
   const [modalItem, setModalItem] = useState(null);
   const [paying, setPaying] = useState(false);
 
@@ -261,28 +214,28 @@ function SellView({ menu, nextNo, onCommit }) {
 
   const addLine = (item, o) => {
     const unit = item.price + (o.milk ? milkPrice(o.milk) : 0) + (o.shot ? EXTRA_SHOT_PRICE : 0);
-    const key = [item.id, o.milk || "", o.sweet || "", o.shot ? 1 : 0, o.serve, o.note || ""].join("|");
+    const key = [item.id, o.milk || "", o.shot ? 1 : 0, o.note || ""].join("|");
     setCart((prev) => {
       const i = prev.findIndex((l) => l.key === key);
       if (i >= 0) return prev.map((l, j) => (j === i ? { ...l, qty: l.qty + o.qty } : l));
       return [...prev, {
         key, id: item.id, name_en: item.name_en, name_th: item.name_th, unit, qty: o.qty,
-        milk: o.milk, sweet: o.sweet, shot: o.shot, serve: o.serve, note: o.note,
+        milk: o.milk, shot: o.shot, note: o.note,
       }];
     });
     setModalItem(null);
   };
 
   const tapItem = (item) => {
-    if (item.milk || item.sweet || item.shot) setModalItem(item);
-    else addLine(item, { milk: null, sweet: null, shot: false, serve, note: "", qty: 1 });
+    if (item.milk || item.shot) setModalItem(item);
+    else addLine(item, { milk: null, shot: false, note: "", qty: 1 });
   };
 
   const changeQty = (key, d) =>
     setCart((prev) => prev.map((l) => (l.key === key ? { ...l, qty: l.qty + d } : l)).filter((l) => l.qty > 0));
 
-  const confirmPay = (received) => {
-    onCommit(cart, total, received);
+  const confirmPay = (method) => {
+    onCommit(cart, total, method);
     setCart([]);
     setPaying(false);
   };
@@ -320,15 +273,6 @@ function SellView({ menu, nextNo, onCommit }) {
           </button>
         </div>
 
-        <Segmented
-          value={serve}
-          onChange={setServe}
-          options={[
-            { id: "here", label: "ทานที่ร้าน", icon: <Armchair size={18} /> },
-            { id: "takeaway", label: "ห่อกลับ", icon: <ShoppingBag size={18} /> },
-          ]}
-        />
-
         <div className="lines">
           {cart.length === 0 && (
             <div className="empty">
@@ -343,7 +287,6 @@ function SellView({ menu, nextNo, onCommit }) {
                 <div className="line-name">{l.name_th}</div>
                 <div className="line-sub">
                   {modsText(l) && <span>{modsText(l)}</span>}
-                  <span className={"badge " + l.serve}>{l.serve === "takeaway" ? "ห่อกลับ" : "ทานที่ร้าน"}</span>
                 </div>
               </div>
               <div className="stepper sm">
@@ -364,7 +307,7 @@ function SellView({ menu, nextNo, onCommit }) {
         </div>
       </div>
 
-      {modalItem && <ItemModal item={modalItem} defaultServe={serve} onClose={() => setModalItem(null)} onAdd={addLine} />}
+      {modalItem && <ItemModal item={modalItem} onClose={() => setModalItem(null)} onAdd={addLine} />}
       {paying && <PayModal total={total} onClose={() => setPaying(false)} onConfirm={confirmPay} />}
     </div>
   );
@@ -405,13 +348,13 @@ function OrdersView({ orders, onVoid }) {
                 <li key={i}>
                   <span>{it.name_th} ×{it.qty}</span>
                   <small>
-                    {[modsText(it), it.serve === "takeaway" ? "ห่อกลับ" : "ทานที่ร้าน"].filter(Boolean).join(" · ")}
+                    {modsText(it)}
                   </small>
                 </li>
               ))}
             </ul>
             <div className="ocard-foot">
-              <span className="muted">รับ {baht(o.received)} · ทอน {baht(o.change_given)}</span>
+              <span className="muted">{o.method === "qr" ? "โอน / Thai QR" : "เงินสด · Cash"}</span>
               {o.status !== "void" && (
                 confirmId === o.id ? (
                   <span className="row">
@@ -436,14 +379,15 @@ function OrdersView({ orders, onVoid }) {
 
 function summarize(list) {
   const revenue = list.reduce((s, o) => s + o.total, 0);
-  let cups = 0, here = 0, takeaway = 0;
+  const qr = list.filter((o) => o.method === "qr").reduce((s, o) => s + o.total, 0);
+  const cash = revenue - qr;
+  let cups = 0;
   const top = {};
   const byDay = {};
   list.forEach((o) => {
     byDay[o.day] = (byDay[o.day] || 0) + o.total;
     o.items.forEach((it) => {
       cups += it.qty;
-      if (it.serve === "takeaway") takeaway += it.qty; else here += it.qty;
       const k = it.name_en;
       if (!top[k]) top[k] = { en: it.name_en, th: it.name_th, qty: 0, revenue: 0 };
       top[k].qty += it.qty;
@@ -451,7 +395,7 @@ function summarize(list) {
     });
   });
   return {
-    revenue, count: list.length, cups, here, takeaway,
+    revenue, cash, qr, count: list.length, cups,
     avg: list.length ? Math.round(revenue / list.length) : 0,
     top: Object.values(top).sort((a, b) => b.qty - a.qty).slice(0, 10),
     days: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)),
@@ -460,13 +404,13 @@ function summarize(list) {
 
 function downloadCsv(rows, filename) {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["Datum", "Uhrzeit", "Nr", "Artikel", "Summe", "Erhalten", "Wechselgeld", "Status"];
+  const head = ["Datum", "Uhrzeit", "Nr", "Artikel", "Summe", "Zahlart", "Status"];
   const lines = [head.map(esc).join(";")].concat(
     rows.map((o) =>
       [
         o.day, timeHM(o.created_at), o.order_no,
         o.items.map((i) => `${i.qty}x ${i.name_en}`).join(", "),
-        o.total, o.received, o.change_given, o.status,
+        o.total, o.method === "qr" ? "Thai QR" : "Bar", o.status,
       ].map(esc).join(";")
     )
   );
@@ -498,7 +442,7 @@ function ClosingCard({ day, stats, closings, onSave }) {
     setNote(existing ? existing.note || "" : "");
   }, [day, existing, lastFloat]);
 
-  const expected = Number(float || 0) + stats.revenue;
+  const expected = Number(float || 0) + stats.cash;
   const hasCounted = counted !== "" && counted != null;
   const diff = hasCounted ? Number(counted) - expected : null;
 
@@ -510,8 +454,8 @@ function ClosingCard({ day, stats, closings, onSave }) {
           <input className="input" inputMode="numeric" value={float}
             onChange={(e) => setFloat(e.target.value.replace(/\D/g, ""))} />
         </label>
-        <label>ยอดขาย · Sales
-          <div className="input ro">{baht(stats.revenue)}</div>
+        <label>ยอดขายเงินสด · Cash sales
+          <div className="input ro">{baht(stats.cash)}</div>
         </label>
         <label>เงินที่ควรมี · Expected cash
           <div className="input ro">{baht(expected)}</div>
@@ -521,6 +465,7 @@ function ClosingCard({ day, stats, closings, onSave }) {
             onChange={(e) => setCounted(e.target.value.replace(/\D/g, ""))} />
         </label>
       </div>
+      <div className="muted pad-s">Thai QR {baht(stats.qr)} · ยอดรวม · Total {baht(stats.revenue)}</div>
       <div className={"change" + (diff == null ? "" : diff === 0 ? " ok" : diff < 0 ? " short" : " ok")}>
         <span>ส่วนต่าง · Difference</span>
         <b>{diff == null ? "—" : (diff > 0 ? "+" : "") + baht(diff).replace("฿-", "-฿")}</b>
@@ -631,8 +576,8 @@ function ReportView({ orders, closings, onSaveClosing, ordersRef }) {
         <div className="kpi"><small>เฉลี่ย/ออเดอร์ · Avg</small><b>{baht(stats.avg)}</b></div>
       </div>
       <div className="split">
-        <span><Armchair size={15} /> ทานที่ร้าน {stats.here}</span>
-        <span><ShoppingBag size={15} /> ห่อกลับ {stats.takeaway}</span>
+        <span><Banknote size={15} /> เงินสด {baht(stats.cash)}</span>
+        <span><QrCode size={15} /> Thai QR {baht(stats.qr)}</span>
       </div>
 
       {from === to && (
@@ -812,7 +757,7 @@ function Pos({ onLock }) {
   const today = localDay();
   const nextNo = orders.filter((o) => o.day === today).reduce((m, o) => Math.max(m, o.order_no || 0), 0) + 1;
 
-  const commit = (cart, total, received) => {
+  const commit = (cart, total, method) => {
     const order = {
       id: uid(),
       order_no: nextNo,
@@ -820,17 +765,16 @@ function Pos({ onLock }) {
       created_at: new Date().toISOString(),
       items: cart.map((l) => ({
         id: l.id, name_en: l.name_en, name_th: l.name_th, qty: l.qty, unit: l.unit,
-        milk: l.milk, sweet: l.sweet, shot: l.shot, serve: l.serve, note: l.note,
+        milk: l.milk, shot: l.shot, note: l.note,
       })),
       total,
-      received,
-      change_given: received - total,
+      method,
       status: "paid",
       rev: 1,
       synced: false,
     };
     updateOrders((prev) => [...prev, order]);
-    showToast(`บันทึกออเดอร์ #${order.order_no} แล้ว`, `เงินทอน · Change ${baht(received - total)}`);
+    showToast(`บันทึกออเดอร์ #${order.order_no} แล้ว`, method === "qr" ? "Thai QR" : "เงินสด · Cash");
     syncNow();
   };
 
